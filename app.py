@@ -1,69 +1,53 @@
+import random
 import re
 import unicodedata
+from typing import Dict, List, Tuple
+
 import streamlit as st
-import random
+
 st.set_page_config(
-    page_title="JobMatch AI",
+    page_title="JobMatch AI — Diagnóstico de Currículo",
     page_icon="🎯",
     layout="wide",
+    initial_sidebar_state="collapsed",
+    menu_items={
+        "About": "# JobMatch AI\nMVP acadêmico liderado por Felipe Araújo."
+    },
 )
 
-# Competências que o sistema consegue identificar no texto.
-SKILLS = {
+# =========================
+# Base de competências
+# =========================
+SKILLS: Dict[str, List[str]] = {
     "Python": ["python", "django", "flask", "fastapi", "pandas", "numpy"],
     "SQL": ["sql", "mysql", "postgresql", "postgres", "sqlite", "oracle"],
     "Git": ["git", "github", "gitlab", "bitbucket", "versionamento"],
     "Lógica de Programação": [
-        "lógica",
-        "logica",
-        "algoritmo",
-        "algoritmos",
-        "estrutura de dados",
-        "programação",
-        "programacao",
+        "lógica", "logica", "algoritmo", "algoritmos", "estrutura de dados",
+        "programação", "programacao"
     ],
     "APIs / REST": ["api", "apis", "rest", "restful", "http", "json", "endpoint"],
     "Banco de Dados": [
-        "banco de dados",
-        "database",
-        "db",
-        "modelagem de dados",
-        "modelagem de banco",
+        "banco de dados", "database", "db", "modelagem de dados", "modelagem de banco"
     ],
     "Cloud": ["aws", "azure", "gcp", "cloud", "docker", "devops"],
     "Linux": ["linux", "bash", "shell", "ubuntu", "terminal"],
     "Testes": ["teste", "testes", "pytest", "unittest", "qa", "testes automatizados"],
     "Power BI / Dados": ["power bi", "powerbi", "excel", "dashboard", "bi", "data studio"],
-    "Automação": [
-        "automação",
-        "automacao",
-        "script",
-        "automação de processos",
-        "automacao de processos",
-        "rpa",
-    ],
+    "Automação": ["automação", "automacao", "script", "rpa", "automação de processos", "automacao de processos"],
     "Indústria 4.0": [
-        "indústria 4.0",
-        "industria 4.0",
-        "iot",
-        "manufatura",
-        "automação industrial",
-        "automacao industrial",
-        "plc",
-        "clp",
+        "indústria 4.0", "industria 4.0", "iot", "manufatura", "automação industrial",
+        "automacao industrial", "plc", "clp"
     ],
 }
 
-# Quando a vaga informa apenas o cargo, o sistema sugere um conjunto de
-# competências normalmente relacionadas ao contexto. Elas ficam marcadas
-# como "inferidas" para não parecerem requisitos explicitamente escritos.
 ROLE_SKILLS = [
     (
         ["desenvolvedor", "desenvolvedora", "developer", "programador", "programadora", "desenvolvimento de software"],
         ["Python", "Git", "SQL", "APIs / REST", "Lógica de Programação"],
     ),
     (
-        ["analista de dados", "analista de dados junior", "analista de dados júnior", "data analyst", "business intelligence", "bi"],
+        ["analista de dados", "data analyst", "business intelligence", "analista de bi", " bi"],
         ["SQL", "Python", "Power BI / Dados", "Banco de Dados"],
     ),
     (
@@ -78,6 +62,19 @@ ROLE_SKILLS = [
         ["automação industrial", "automacao industrial", "indústria", "industria", "manutenção industrial", "manutencao industrial"],
         ["Automação", "Indústria 4.0", "Python"],
     ),
+]
+
+SUPPORTED_ROLES = [
+    "Desenvolvedor Python Júnior",
+    "Desenvolvedor Web Júnior",
+    "Analista de Sistemas Júnior",
+    "Analista de Dados Júnior",
+    "Analista de BI Júnior",
+    "Analista de QA / Testes",
+    "Analista de Suporte Técnico",
+    "Analista DevOps Júnior",
+    "Analista de Automação",
+    "Analista de Indústria 4.0",
 ]
 
 QUESTION_BANK = {
@@ -184,7 +181,6 @@ CUES = {
 
 
 def norm(text: str) -> str:
-    """Normaliza espaços, caixa e acentos para facilitar a busca."""
     text = (text or "").lower().strip()
     text = "".join(
         char for char in unicodedata.normalize("NFD", text)
@@ -196,7 +192,6 @@ def norm(text: str) -> str:
 def contains_variant(text: str, variant: str) -> bool:
     normalized_text = norm(text)
     normalized_variant = norm(variant)
-    # Frases usam busca literal; termos curtos usam limites de palavra.
     if " " in normalized_variant:
         return normalized_variant in normalized_text
     return bool(
@@ -207,7 +202,11 @@ def contains_variant(text: str, variant: str) -> bool:
     )
 
 
-def extract_skills(text: str):
+def unique(items: List[str]) -> List[str]:
+    return list(dict.fromkeys(items))
+
+
+def extract_skills(text: str) -> List[str]:
     found = []
     for skill, variants in SKILLS.items():
         if any(contains_variant(text, variant) for variant in variants):
@@ -215,36 +214,29 @@ def extract_skills(text: str):
     return found
 
 
-def infer_role_skills(text: str):
+def infer_role_skills(text: str) -> List[str]:
     inferred = []
     normalized = norm(text)
     for triggers, skills in ROLE_SKILLS:
         if any(norm(trigger) in normalized for trigger in triggers):
-            for skill in skills:
-                if skill not in inferred:
-                    inferred.append(skill)
+            inferred.extend(skill for skill in skills if skill not in inferred)
     return inferred
 
 
-def unique(items):
-    return list(dict.fromkeys(items))
-
-
-def generate_questions(skills, amount=3):
-    """Sorteia perguntas técnicas relacionadas às competências identificadas na vaga."""
+def generate_questions(skills: List[str], amount: int = 3) -> List[Tuple[str, str]]:
     available = [skill for skill in unique(skills) if skill in QUESTION_BANK]
     if not available:
         available = ["Lógica de Programação", "Python", "SQL"]
 
-    # Prioriza competências diferentes quando possível e evita repetir a mesma pergunta.
-    chosen = random.sample(available, k=min(amount, len(available)))
-    questions = [(skill, random.choice(QUESTION_BANK[skill])) for skill in chosen]
+    # Prioriza competências diferentes; depois completa com perguntas variadas.
+    chosen_skills = random.sample(available, k=min(amount, len(available)))
+    questions = [(skill, random.choice(QUESTION_BANK[skill])) for skill in chosen_skills]
 
     while len(questions) < amount:
         skill = random.choice(available)
-        question = random.choice(QUESTION_BANK[skill])
-        if (skill, question) not in questions or len(QUESTION_BANK[skill]) == 1:
-            questions.append((skill, question))
+        candidates = [q for q in QUESTION_BANK[skill] if (skill, q) not in questions]
+        question = random.choice(candidates or QUESTION_BANK[skill])
+        questions.append((skill, question))
 
     return questions[:amount]
 
@@ -252,197 +244,315 @@ def generate_questions(skills, amount=3):
 def analyze(resume: str, job: str):
     resume_explicit = extract_skills(resume)
     job_explicit = extract_skills(job)
+    job_inferred = [s for s in infer_role_skills(job) if s not in job_explicit]
+    resume_inferred = [s for s in infer_role_skills(resume) if s not in resume_explicit]
 
-    # Para vagas vagas demais (ex.: "Desenvolvedor júnior"), inferimos
-    # competências prováveis do cargo. Essas sugestões são exibidas separadamente.
-    job_inferred = [skill for skill in infer_role_skills(job) if skill not in job_explicit]
     job_skills = unique(job_explicit + job_inferred)
-
-    # No currículo, uma competência só entra como "encontrada" quando há
-    # evidência textual. O contexto do cargo é mostrado apenas como sugestão.
-    resume_inferred = [skill for skill in infer_role_skills(resume) if skill not in resume_explicit]
-
     matched = [skill for skill in job_skills if skill in resume_explicit]
     gaps = [skill for skill in job_skills if skill not in resume_explicit]
-
     score = round((len(matched) / max(len(job_skills), 1)) * 100) if job_skills else 0
     question_skills = unique(gaps + matched)[:3] or ["Lógica de Programação", "Python", "SQL"]
 
-    return (
-        resume_explicit,
-        resume_inferred,
-        job_explicit,
-        job_inferred,
-        job_skills,
-        matched,
-        gaps,
-        score,
-        question_skills,
-    )
+    return {
+        "resume_explicit": resume_explicit,
+        "resume_inferred": resume_inferred,
+        "job_explicit": job_explicit,
+        "job_inferred": job_inferred,
+        "job_skills": job_skills,
+        "matched": matched,
+        "gaps": gaps,
+        "score": score,
+        "question_skills": question_skills,
+    }
 
 
-def feedback(skill: str, answer: str):
+def feedback(answer: str, skill: str):
     words = len(answer.split())
     if words < 8:
         return 45, "Aprofunde", "Sua resposta está curta. Explique o raciocínio, cite um exemplo e diga como você validaria o resultado."
 
     answer_norm = norm(answer)
     hits = sum(1 for cue in CUES.get(skill, []) if cue in answer_norm)
-    score = min(95, 55 + hits * 8 + min(words, 80) // 10)
+    score = min(95, 55 + hits * 7 + min(words, 80) // 10)
     level = "Muito bom" if score >= 82 else "Bom começo" if score >= 68 else "Aprofunde"
-    message = "Você trouxe conceitos relevantes. Para ganhar força em uma entrevista, conecte a resposta a uma situação prática e explique suas decisões técnicas."
+
     if score >= 82:
         message = "Resposta forte: você demonstra domínio dos conceitos e consegue conectar a parte técnica com uma aplicação prática."
+    elif score >= 68:
+        message = "Você trouxe conceitos relevantes. Para ganhar força, conecte a resposta a uma situação prática e explique suas decisões técnicas."
+    else:
+        message = "A resposta mostra uma direção, mas ainda pode ganhar profundidade. Defina os conceitos, descreva os passos e inclua um exemplo."
+
     return score, level, message
 
 
-st.markdown(
-    """
-    <style>
-    .main-title {font-size: 2.7rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: .3rem;}
-    .subtitle {color: #667085; font-size: 1.05rem; line-height: 1.55;}
-    .metric-box {padding: 1rem 1.1rem; border: 1px solid #e4e7ec; border-radius: 16px; background: #ffffff;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown('<div class="main-title">JobMatch <span style="color:#2457ff">AI</span></div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Diagnóstico de currículo + simulador de entrevista técnica para vagas de TI e Indústria.</div>', unsafe_allow_html=True)
-st.caption("Líder do projeto: Felipe Araújo")
-
-col1, col2 = st.columns(2)
-with col1:
-    resume = st.text_area(
-        "01 — Seu currículo",
-        height=260,
-        placeholder=(
-            "Ex.: João Silva\n"
-            "Desenvolvedor de Software Júnior\n\n"
-            "Habilidades: Python, Git, SQL e APIs REST.\n"
-            "Projeto de automação de relatórios com Python..."
-        ),
-    )
-with col2:
-    job = st.text_area(
-        "02 — Vaga desejada",
-        height=260,
-        placeholder=(
-            "Ex.: Desenvolvedor Python Júnior\n\n"
-            "Requisitos: Python, Git, SQL, APIs REST e lógica de programação.\n"
-            "Diferencial: Docker..."
-        ),
-    )
-
-if st.button("Analisar meu perfil →", type="primary", use_container_width=True):
-    if not resume.strip() or not job.strip():
-        st.error("Preencha o currículo e o anúncio da vaga para executar o diagnóstico.")
-    else:
-        (
-            resume_explicit,
-            resume_inferred,
-            job_explicit,
-            job_inferred,
-            job_skills,
-            matched,
-            gaps,
-            score,
-            question_skills,
-        ) = analyze(resume, job)
-
-        st.session_state.analysis = {
-            "resume_explicit": resume_explicit,
-            "resume_inferred": resume_inferred,
-            "job_explicit": job_explicit,
-            "job_inferred": job_inferred,
-            "job_skills": job_skills,
-            "matched": matched,
-            "gaps": gaps,
-            "score": score,
-            "question_skills": question_skills,
+def inject_css():
+    st.markdown(
+        """
+        <style>
+        :root {
+            --jm-primary: #2457ff;
+            --jm-primary-2: #6b7cff;
+            --jm-ink: #101828;
+            --jm-muted: #667085;
+            --jm-line: #e4e7ec;
+            --jm-soft: #f6f8fc;
+            --jm-white: #ffffff;
+            --jm-success: #157347;
+            --jm-success-bg: #e9f8f0;
+            --jm-warning: #a15c00;
+            --jm-warning-bg: #fff5e8;
+            --jm-danger: #b42318;
+            --jm-danger-bg: #fff0ef;
+            --jm-shadow: 0 18px 45px rgba(16, 24, 40, 0.08);
+            --jm-radius: 20px;
         }
-        st.session_state.interview_questions = generate_questions(question_skills, 3)
-        for i in range(3):
-            st.session_state.pop(f"answer_{i}", None)
-            st.session_state.pop(f"feedback_{i}", None)
 
-if "analysis" in st.session_state:
-    data = st.session_state.analysis
-    st.divider()
-    st.subheader("Diagnóstico do perfil")
-    m1, m2, m3 = st.columns(3)
-    with m1:
-        st.metric("Compatibilidade", f"{data['score']}%")
-    with m2:
-        st.metric("Competências na vaga", len(data["job_skills"]))
-    with m3:
-        st.metric("Lacunas prioritárias", len(data["gaps"]))
+        .stApp {
+            background: linear-gradient(180deg, #f7f9fc 0%, #eef3fb 100%);
+        }
+        [data-testid="stHeader"] { background: rgba(247,249,252,0.82); }
+        [data-testid="stToolbar"] { right: 1rem; }
+        .block-container { padding-top: 2rem; padding-bottom: 4rem; max-width: 1240px; }
 
-    a, b, c = st.columns(3)
+        .jm-topbar {
+            display:flex; justify-content:space-between; align-items:center;
+            padding: 12px 0 18px; border-bottom:1px solid rgba(228,231,236,.85);
+            margin-bottom: 26px;
+        }
+        .jm-brand { font-size: 1.1rem; font-weight: 800; letter-spacing:-.03em; color:var(--jm-ink); }
+        .jm-brand span { color:var(--jm-primary); }
+        .jm-badge {
+            padding:7px 11px; border:1px solid #dbe2f0; border-radius:999px;
+            color:#48536a; background:rgba(255,255,255,.82); font-size:.76rem; font-weight:700;
+        }
+
+        .jm-hero {
+            background: linear-gradient(135deg, #0f1b38 0%, #172b5d 45%, #2457ff 100%);
+            border-radius: 28px; padding: 34px 36px; color:white; box-shadow: 0 24px 55px rgba(23,43,93,.18);
+            position:relative; overflow:hidden; margin-bottom:24px;
+        }
+        .jm-hero:after { content:""; position:absolute; width:340px; height:340px; border-radius:50%; border:1px solid rgba(255,255,255,.12); right:-120px; top:-150px; }
+        .jm-eyebrow { font-size:.74rem; letter-spacing:.14em; text-transform:uppercase; font-weight:800; color:#b7c9ff; }
+        .jm-title { font-size:2.65rem; line-height:1.03; font-weight:850; letter-spacing:-.045em; margin:.55rem 0 .7rem; max-width:760px; }
+        .jm-subtitle { max-width:790px; color:#d7e0f8; line-height:1.6; margin-bottom:0; }
+        .jm-hero-meta { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+        .jm-hero-pill { border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08); border-radius:999px; padding:8px 11px; font-size:.75rem; color:#e7edff; }
+
+        .jm-section-title { font-size:1.05rem; font-weight:800; color:var(--jm-ink); margin: 28px 0 8px; }
+        .jm-section-copy { color:var(--jm-muted); font-size:.86rem; margin-bottom:14px; }
+        .jm-role-wrap { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+        .jm-role { border:1px solid #dfe4ed; background:white; color:#344054; border-radius:999px; padding:8px 11px; font-size:.75rem; font-weight:700; box-shadow:0 3px 12px rgba(16,24,40,.04); }
+
+        .jm-card-title { font-size:1rem; font-weight:800; color:var(--jm-ink); margin-bottom:2px; }
+        .jm-card-copy { color:var(--jm-muted); font-size:.78rem; line-height:1.5; margin-bottom:12px; }
+        .jm-number { display:inline-flex; width:27px; height:27px; border-radius:9px; align-items:center; justify-content:center; background:#edf2ff; color:var(--jm-primary); font-size:.72rem; font-weight:900; margin-right:7px; }
+        div[data-testid="stVerticalBlockBorderWrapper"] { border-radius:var(--jm-radius); border-color:var(--jm-line); box-shadow:var(--jm-shadow); background:rgba(255,255,255,.94); }
+        .stTextArea textarea { border-radius:14px !important; background:#fbfcfe !important; border-color:#dfe4ed !important; }
+        .stTextArea textarea:focus { border-color:#9db2ff !important; box-shadow:0 0 0 4px #edf1ff !important; }
+        .stButton > button { border-radius:13px; font-weight:800; min-height:44px; }
+        div.stButton > button[kind="primary"] { background:var(--jm-primary); border-color:var(--jm-primary); }
+        div.stButton > button[kind="secondary"] { background:#f4f6fa; border-color:#e1e6ef; color:#344054; }
+
+        [data-testid="stMetric"] { background:#fff; border:1px solid var(--jm-line); padding:16px; border-radius:16px; box-shadow:0 10px 28px rgba(16,24,40,.05); }
+        [data-testid="stMetricLabel"] p { color:var(--jm-muted) !important; font-weight:700; }
+        [data-testid="stMetricValue"] { color:var(--jm-ink); }
+
+        .jm-status { padding:13px 14px; border-radius:14px; margin-top:8px; font-size:.82rem; line-height:1.55; }
+        .jm-status.ok { background:var(--jm-success-bg); color:var(--jm-success); border:1px solid #cceedd; }
+        .jm-status.warn { background:var(--jm-warning-bg); color:var(--jm-warning); border:1px solid #f6dfb8; }
+        .jm-status.danger { background:var(--jm-danger-bg); color:var(--jm-danger); border:1px solid #f4c7c3; }
+        .jm-chip-row { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+        .jm-chip { padding:6px 9px; border-radius:999px; background:#f2f4f7; color:#344054; font-size:.72rem; font-weight:750; }
+        .jm-chip.ok { background:#eaf8f1; color:#157347; }
+        .jm-chip.miss { background:#fff2ef; color:#b42318; }
+
+        .jm-question {
+            border:1px solid var(--jm-line); background:#fbfcff; padding:16px; border-radius:16px; margin-top:12px;
+        }
+        .jm-question-head { display:flex; gap:10px; align-items:flex-start; }
+        .jm-qnum { width:30px; height:30px; border-radius:10px; background:#edf2ff; color:var(--jm-primary); display:flex; align-items:center; justify-content:center; font-weight:900; flex:0 0 auto; }
+        .jm-focus { color:var(--jm-primary); font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+        .jm-qtext { color:var(--jm-ink); font-size:.96rem; line-height:1.5; font-weight:750; margin-top:2px; }
+        .jm-feedback { padding:12px 14px; border-radius:14px; background:#f4f7fb; border:1px solid #e4e8f0; margin-top:10px; font-size:.82rem; line-height:1.55; }
+        .jm-footer { color:#98a2b3; text-align:center; font-size:.72rem; margin-top:30px; }
+        @media (max-width: 900px) {
+            .jm-title { font-size:2rem; }
+            .jm-hero { padding:26px 22px; }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def badge(text: str, cls: str = "") -> str:
+    return f'<span class="jm-chip {cls}">{text}</span>'
+
+
+def render_role_section():
+    roles_html = "".join(f'<span class="jm-role">{role}</span>' for role in SUPPORTED_ROLES)
+    st.markdown('<div class="jm-section-title">🎯 Cargos que o JobMatch atende</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="jm-section-copy">Cole qualquer anúncio de TI, Dados ou Indústria. Estes são os principais perfis que o diagnóstico consegue contextualizar.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(f'<div class="jm-role-wrap">{roles_html}</div>', unsafe_allow_html=True)
+
+
+def render_analysis(data: dict):
+    st.markdown('<div class="jm-section-title">Seu diagnóstico</div>', unsafe_allow_html=True)
+    st.markdown('<div class="jm-section-copy">Veja rapidamente o alinhamento técnico, o que já aparece no currículo e onde estão as lacunas.</div>', unsafe_allow_html=True)
+
+    m1, m2, m3 = st.columns(3, gap="medium")
+    m1.metric("Compatibilidade", f"{data['score']}%")
+    m2.metric("Competências na vaga", len(data["job_skills"]))
+    m3.metric("Lacunas prioritárias", len(data["gaps"]))
+    st.progress(data["score"] / 100, text=f"Aderência técnica: {data['score']}%")
+
+    a, b, c = st.columns(3, gap="medium")
     with a:
-        st.markdown("**Competências encontradas**")
-        if data["matched"]:
-            st.success(" • ".join(data["matched"]))
-        else:
-            st.info("Nenhuma competência técnica explícita em comum foi identificada.")
-        if data["resume_explicit"]:
-            st.caption("Detectadas no currículo: " + " • ".join(data["resume_explicit"]))
-        else:
-            st.warning("Seu currículo não apresenta competências técnicas identificáveis. Adicione uma seção de habilidades, cursos ou projetos.")
-        if data["resume_inferred"]:
-            st.caption("Contexto do cargo no currículo (não considerado como comprovação): " + " • ".join(data["resume_inferred"]))
+        with st.container(border=True):
+            st.markdown('<div class="jm-card-title">Competências encontradas</div>', unsafe_allow_html=True)
+            st.markdown('<div class="jm-card-copy">Competências identificadas explicitamente no currículo.</div>', unsafe_allow_html=True)
+            if data["matched"]:
+                st.markdown('<div class="jm-chip-row">' + ''.join(badge(x, "ok") for x in data["matched"]) + '</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="jm-status danger">Nenhuma competência técnica explícita em comum foi identificada.</div>', unsafe_allow_html=True)
+            if data["resume_explicit"]:
+                st.caption("Também detectadas no currículo: " + " • ".join(data["resume_explicit"]))
+            else:
+                st.warning("Adicione uma seção de habilidades, cursos ou projetos técnicos no currículo.")
 
     with b:
-        st.markdown("**Habilidades citadas na vaga**")
-        if data["job_explicit"]:
-            st.success(" • ".join(data["job_explicit"]))
-        if data["job_inferred"]:
-            st.info("Sugeridas pelo cargo: " + " • ".join(data["job_inferred"]))
-        if not data["job_explicit"] and not data["job_inferred"]:
-            st.warning("Não foi possível detectar habilidades técnicas. Cole os requisitos completos da vaga.")
+        with st.container(border=True):
+            st.markdown('<div class="jm-card-title">Habilidades da vaga</div>', unsafe_allow_html=True)
+            st.markdown('<div class="jm-card-copy">O sistema separa o que foi escrito na vaga do que foi inferido pelo cargo.</div>', unsafe_allow_html=True)
+            if data["job_explicit"]:
+                st.markdown('<div class="jm-chip-row">' + ''.join(badge(x) for x in data["job_explicit"]) + '</div>', unsafe_allow_html=True)
+            else:
+                st.info("Nenhum requisito técnico explícito detectado.")
+            if data["job_inferred"]:
+                st.caption("Sugestões pelo contexto do cargo: " + " • ".join(data["job_inferred"]))
 
     with c:
-        st.markdown("**Lacunas**")
-        if data["gaps"]:
-            for gap in data["gaps"]:
-                st.warning(f"{gap}: adicione projeto, curso ou evidência prática.")
-        else:
-            st.success("Nenhuma lacuna crítica identificada.")
+        with st.container(border=True):
+            st.markdown('<div class="jm-card-title">Lacunas prioritárias</div>', unsafe_allow_html=True)
+            st.markdown('<div class="jm-card-copy">Competências da vaga que ainda não têm evidência textual no currículo.</div>', unsafe_allow_html=True)
+            if data["gaps"]:
+                for gap in data["gaps"]:
+                    st.markdown(f'<div class="jm-status warn"><strong>{gap}</strong><br>Inclua projeto, curso ou evidência prática dessa competência.</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="jm-status ok">Nenhuma lacuna crítica identificada. Seu currículo está alinhado às competências analisadas.</div>', unsafe_allow_html=True)
 
-    st.divider()
-    st.subheader("03 — Entrevista técnica personalizada")
-    st.caption("As perguntas são sorteadas aleatoriamente, mas sempre ficam vinculadas às competências identificadas na vaga. O feedback é heurístico e pode depois ser substituído por uma IA generativa.")
 
-    if "interview_questions" not in st.session_state:
-        st.session_state.interview_questions = generate_questions(data["question_skills"], 3)
+def render_interview(data: dict):
+    st.markdown('<div class="jm-section-title">03 — Entrevista técnica personalizada</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="jm-section-copy">As perguntas são sorteadas aleatoriamente, mas sempre fundamentadas nas competências identificadas na vaga. Você pode gerar outra rodada sem refazer o diagnóstico.</div>',
+        unsafe_allow_html=True,
+    )
 
-    if st.button("↻ Sortear novas perguntas", key="shuffle_questions"):
-        st.session_state.interview_questions = generate_questions(data["question_skills"], 3)
-        for i in range(3):
-            st.session_state.pop(f"answer_{i}", None)
-            st.session_state.pop(f"feedback_{i}", None)
-        st.rerun()
+    left, right = st.columns([1.4, 1], gap="medium")
+    with left:
+        st.markdown("**Como funciona**")
+        st.caption("1. O sistema seleciona até 3 competências.  2. Sorteia perguntas do banco técnico.  3. Você responde.  4. O JobMatch atribui um feedback heurístico.")
+    with right:
+        if st.button("↻ Sortear novas perguntas", key="shuffle_questions", use_container_width=True):
+            st.session_state.interview_questions = generate_questions(data["question_skills"], 3)
+            for i in range(3):
+                st.session_state.pop(f"feedback_{i}", None)
+                st.session_state.pop(f"answer_{i}", None)
+            st.rerun()
 
     for i, (skill, question) in enumerate(st.session_state.interview_questions):
-        st.markdown(f"### {i + 1}. Foco: {skill}")
-        st.write(question)
-        answer = st.text_area(
-            "Sua resposta",
-            key=f"answer_{i}",
-            height=150,
-            placeholder="Digite sua resposta como se estivesse na entrevista...",
-        )
-        if st.button(f"Receber feedback — pergunta {i + 1}", key=f"feedback_btn_{i}"):
-            if not answer.strip():
-                st.warning("Digite uma resposta antes de solicitar o feedback.")
-            else:
-                score_feedback, level, message = feedback(skill, answer)
-                st.session_state[f"feedback_{i}"] = (score_feedback, level, message)
+        with st.container(border=True):
+            st.markdown(
+                f'<div class="jm-question"><div class="jm-question-head"><div class="jm-qnum">{i + 1}</div><div><div class="jm-focus">Foco: {skill}</div><div class="jm-qtext">{question}</div></div></div></div>',
+                unsafe_allow_html=True,
+            )
+            answer = st.text_area(
+                "Sua resposta",
+                key=f"answer_{i}",
+                height=140,
+                placeholder="Responda como se estivesse diante do recrutador. Explique o raciocínio e, quando possível, use um exemplo prático.",
+            )
+            if st.button(f"Receber feedback — pergunta {i + 1}", key=f"feedback_btn_{i}", use_container_width=True):
+                if not answer.strip():
+                    st.warning("Digite uma resposta antes de solicitar o feedback.")
+                else:
+                    st.session_state[f"feedback_{i}"] = feedback(answer, skill)
+            if f"feedback_{i}" in st.session_state:
+                score_feedback, level, message = st.session_state[f"feedback_{i}"]
+                st.markdown(
+                    f'<div class="jm-feedback"><strong>{score_feedback}/100 — {level}</strong><br>{message}</div>',
+                    unsafe_allow_html=True,
+                )
 
-        if f"feedback_{i}" in st.session_state:
-            score_feedback, level, message = st.session_state[f"feedback_{i}"]
-            st.success(f"{score_feedback}/100 — {level}")
-            st.write(message)
+
+def main():
+    inject_css()
+
+    st.markdown(
+        '<div class="jm-topbar"><div class="jm-brand">JobMatch <span>AI</span></div><div class="jm-badge">Líder: Felipe Araújo • Python + Streamlit</div></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="jm-hero"><div class="jm-eyebrow">Diagnóstico de currículo + simulador de entrevista</div><div class="jm-title">Descubra o que falta para seu perfil chegar mais perto da vaga.</div><div class="jm-subtitle">Compare seu currículo com a descrição de uma vaga, identifique competências e treine para perguntas técnicas com base no que o mercado está pedindo.</div><div class="jm-hero-meta"><span class="jm-hero-pill">✓ Comparação de habilidades</span><span class="jm-hero-pill">✓ Lacunas prioritárias</span><span class="jm-hero-pill">✓ 3 perguntas aleatórias</span><span class="jm-hero-pill">✓ Feedback imediato</span></div></div>',
+        unsafe_allow_html=True,
+    )
+
+    render_role_section()
+
+    st.markdown('<div class="jm-section-title">Comece seu diagnóstico</div>', unsafe_allow_html=True)
+    st.markdown('<div class="jm-section-copy">Preencha os dois campos abaixo. Quanto mais completa a descrição, mais útil será o diagnóstico.</div>', unsafe_allow_html=True)
+
+    left, right = st.columns(2, gap="large")
+    with left:
+        with st.container(border=True):
+            st.markdown('<div class="jm-card-title"><span class="jm-number">01</span>Seu currículo</div>', unsafe_allow_html=True)
+            st.markdown('<div class="jm-card-copy">Inclua experiências, projetos, cursos e habilidades.</div>', unsafe_allow_html=True)
+            resume = st.text_area(
+                "Currículo",
+                height=270,
+                label_visibility="collapsed",
+                placeholder="Ex.: João Silva\nDesenvolvedor de Software Júnior\n\nHabilidades: Python, Git, SQL e APIs REST.\nProjeto de automação de relatórios com Python...",
+            )
+
+    with right:
+        with st.container(border=True):
+            st.markdown('<div class="jm-card-title"><span class="jm-number">02</span>Vaga desejada</div>', unsafe_allow_html=True)
+            st.markdown('<div class="jm-card-copy">Cole o anúncio ou apenas os requisitos principais da vaga.</div>', unsafe_allow_html=True)
+            job = st.text_area(
+                "Descrição da vaga",
+                height=270,
+                label_visibility="collapsed",
+                placeholder="Ex.: Desenvolvedor Python Júnior\n\nRequisitos: Python, Git, SQL, APIs REST e lógica de programação.\nDiferencial: Docker...",
+            )
+
+    st.write("")
+    if st.button("Analisar meu perfil →", type="primary", use_container_width=True):
+        if not resume.strip() or not job.strip():
+            st.error("Preencha o currículo e o anúncio da vaga para executar o diagnóstico.")
+        else:
+            st.session_state.analysis = analyze(resume, job)
+            st.session_state.interview_questions = generate_questions(st.session_state.analysis["question_skills"], 3)
+            for i in range(3):
+                st.session_state.pop(f"answer_{i}", None)
+                st.session_state.pop(f"feedback_{i}", None)
+
+    if "analysis" in st.session_state:
+        data = st.session_state.analysis
         st.divider()
+        render_analysis(data)
+        st.divider()
+        render_interview(data)
 
-st.caption("MVP acadêmico • análise por palavras-chave + inferência de contexto do cargo • perguntas técnicas aleatórias por competência • feedback heurístico • estrutura pronta para integração com IA generativa")
+    st.markdown(
+        '<div class="jm-footer">MVP acadêmico • análise por palavras-chave + inferência de contexto do cargo • perguntas técnicas aleatórias por competência • feedback heurístico • pronto para futura integração com IA generativa</div>',
+        unsafe_allow_html=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
