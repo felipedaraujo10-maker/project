@@ -1,4 +1,5 @@
 import re
+import unicodedata
 import streamlit as st
 
 st.set_page_config(
@@ -7,20 +8,77 @@ st.set_page_config(
     layout="wide",
 )
 
+# Competências que o sistema consegue identificar no texto.
 SKILLS = {
     "Python": ["python", "django", "flask", "fastapi", "pandas", "numpy"],
-    "SQL": ["sql", "mysql", "postgresql", "postgres", "sqlite"],
-    "Git": ["git", "github", "gitlab", "bitbucket"],
-    "Lógica de Programação": ["lógica", "logica", "algoritmo", "algoritmos", "estrutura de dados"],
-    "APIs / REST": ["api", "apis", "rest", "restful", "http", "json"],
-    "Banco de Dados": ["banco de dados", "database", "db", "modelagem de dados"],
-    "Cloud": ["aws", "azure", "gcp", "cloud", "docker"],
-    "Linux": ["linux", "bash", "shell"],
-    "Testes": ["teste", "testes", "pytest", "unittest", "qa"],
-    "Power BI / Dados": ["power bi", "powerbi", "excel", "dashboard", "bi"],
-    "Automação": ["automação", "automacao", "script", "automação de processos", "rpa"],
-    "Indústria 4.0": ["indústria 4.0", "industria 4.0", "iot", "manufatura", "automação industrial", "plc", "clp"],
+    "SQL": ["sql", "mysql", "postgresql", "postgres", "sqlite", "oracle"],
+    "Git": ["git", "github", "gitlab", "bitbucket", "versionamento"],
+    "Lógica de Programação": [
+        "lógica",
+        "logica",
+        "algoritmo",
+        "algoritmos",
+        "estrutura de dados",
+        "programação",
+        "programacao",
+    ],
+    "APIs / REST": ["api", "apis", "rest", "restful", "http", "json", "endpoint"],
+    "Banco de Dados": [
+        "banco de dados",
+        "database",
+        "db",
+        "modelagem de dados",
+        "modelagem de banco",
+    ],
+    "Cloud": ["aws", "azure", "gcp", "cloud", "docker", "devops"],
+    "Linux": ["linux", "bash", "shell", "ubuntu", "terminal"],
+    "Testes": ["teste", "testes", "pytest", "unittest", "qa", "testes automatizados"],
+    "Power BI / Dados": ["power bi", "powerbi", "excel", "dashboard", "bi", "data studio"],
+    "Automação": [
+        "automação",
+        "automacao",
+        "script",
+        "automação de processos",
+        "automacao de processos",
+        "rpa",
+    ],
+    "Indústria 4.0": [
+        "indústria 4.0",
+        "industria 4.0",
+        "iot",
+        "manufatura",
+        "automação industrial",
+        "automacao industrial",
+        "plc",
+        "clp",
+    ],
 }
+
+# Quando a vaga informa apenas o cargo, o sistema sugere um conjunto de
+# competências normalmente relacionadas ao contexto. Elas ficam marcadas
+# como "inferidas" para não parecerem requisitos explicitamente escritos.
+ROLE_SKILLS = [
+    (
+        ["desenvolvedor", "desenvolvedora", "developer", "programador", "programadora", "desenvolvimento de software"],
+        ["Python", "Git", "SQL", "APIs / REST", "Lógica de Programação"],
+    ),
+    (
+        ["analista de dados", "analista de dados junior", "analista de dados júnior", "data analyst", "business intelligence", "bi"],
+        ["SQL", "Python", "Power BI / Dados", "Banco de Dados"],
+    ),
+    (
+        ["devops", "engenheiro devops", "engenheira devops", "sre", "infraestrutura"],
+        ["Git", "Cloud", "Linux", "Python"],
+    ),
+    (
+        ["suporte de ti", "suporte técnico", "suporte tecnico", "help desk", "service desk", "analista de suporte"],
+        ["Linux", "Lógica de Programação", "Banco de Dados"],
+    ),
+    (
+        ["automação industrial", "automacao industrial", "indústria", "industria", "manutenção industrial", "manutencao industrial"],
+        ["Automação", "Indústria 4.0", "Python"],
+    ),
+]
 
 QUESTIONS = {
     "Python": "Como você estruturaria uma função Python que recebe uma lista de dados e retorna apenas os itens válidos, tratando erros sem interromper o processamento?",
@@ -38,45 +96,98 @@ QUESTIONS = {
 }
 
 CUES = {
-    "Python": ["função", "tratamento", "erro", "try", "except", "lista", "validação"],
+    "Python": ["funcao", "tratamento", "erro", "try", "except", "lista", "validacao"],
     "SQL": ["select", "join", "group", "sum", "order", "limit", "having"],
     "Git": ["branch", "commit", "pull", "merge", "rebase", "pull request"],
-    "Lógica de Programação": ["condição", "repetição", "if", "for", "while", "algoritmo"],
-    "APIs / REST": ["endpoint", "http", "json", "status", "validação", "post", "get"],
+    "Lógica de Programação": ["condicao", "repeticao", "if", "for", "while", "algoritmo"],
+    "APIs / REST": ["endpoint", "http", "json", "status", "validacao", "post", "get"],
     "Banco de Dados": ["tabela", "chave", "relacionamento", "id", "foreign key", "sql"],
-    "Cloud": ["custo", "escala", "segurança", "aws", "monitoramento", "disponibilidade"],
-    "Linux": ["top", "ps", "free", "kill", "journalctl", "memória", "processo"],
-    "Testes": ["assert", "pytest", "caso", "entrada", "saída", "teste"],
-    "Power BI / Dados": ["indicador", "kpi", "dashboard", "dado", "filtro", "visualização"],
+    "Cloud": ["custo", "escala", "seguranca", "aws", "monitoramento", "disponibilidade"],
+    "Linux": ["top", "ps", "free", "kill", "journalctl", "memoria", "processo"],
+    "Testes": ["assert", "pytest", "caso", "entrada", "saida", "teste"],
+    "Power BI / Dados": ["indicador", "kpi", "dashboard", "dado", "filtro", "visualizacao"],
     "Automação": ["script", "processo", "tempo", "erro", "ganho", "python"],
-    "Indústria 4.0": ["sensor", "iot", "dados", "alerta", "manutenção", "máquina"],
+    "Indústria 4.0": ["sensor", "iot", "dados", "alerta", "manutencao", "maquina"],
 }
 
 
 def norm(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+    """Normaliza espaços, caixa e acentos para facilitar a busca."""
+    text = (text or "").lower().strip()
+    text = "".join(
+        char for char in unicodedata.normalize("NFD", text)
+        if unicodedata.category(char) != "Mn"
+    )
+    return re.sub(r"\s+", " ", text)
+
+
+def contains_variant(text: str, variant: str) -> bool:
+    normalized_text = norm(text)
+    normalized_variant = norm(variant)
+    # Frases usam busca literal; termos curtos usam limites de palavra.
+    if " " in normalized_variant:
+        return normalized_variant in normalized_text
+    return bool(
+        re.search(
+            r"(?<![a-z0-9_])" + re.escape(normalized_variant) + r"(?![a-z0-9_])",
+            normalized_text,
+        )
+    )
 
 
 def extract_skills(text: str):
-    normalized = norm(text)
     found = []
     for skill, variants in SKILLS.items():
-        if any(
-            re.search(r"(?<![a-z0-9])" + re.escape(variant) + r"(?![a-z0-9])", normalized)
-            for variant in variants
-        ):
+        if any(contains_variant(text, variant) for variant in variants):
             found.append(skill)
     return found
 
 
+def infer_role_skills(text: str):
+    inferred = []
+    normalized = norm(text)
+    for triggers, skills in ROLE_SKILLS:
+        if any(norm(trigger) in normalized for trigger in triggers):
+            for skill in skills:
+                if skill not in inferred:
+                    inferred.append(skill)
+    return inferred
+
+
+def unique(items):
+    return list(dict.fromkeys(items))
+
+
 def analyze(resume: str, job: str):
-    resume_skills = extract_skills(resume)
-    job_skills = extract_skills(job)
-    matched = [skill for skill in job_skills if skill in resume_skills]
-    gaps = [skill for skill in job_skills if skill not in resume_skills]
-    score = round((len(matched) / max(len(job_skills), 1)) * 100)
-    question_skills = (gaps + matched)[:3] or ["Lógica de Programação", "Python", "SQL"]
-    return resume_skills, job_skills, matched, gaps, score, question_skills
+    resume_explicit = extract_skills(resume)
+    job_explicit = extract_skills(job)
+
+    # Para vagas vagas demais (ex.: "Desenvolvedor júnior"), inferimos
+    # competências prováveis do cargo. Essas sugestões são exibidas separadamente.
+    job_inferred = [skill for skill in infer_role_skills(job) if skill not in job_explicit]
+    job_skills = unique(job_explicit + job_inferred)
+
+    # No currículo, uma competência só entra como "encontrada" quando há
+    # evidência textual. O contexto do cargo é mostrado apenas como sugestão.
+    resume_inferred = [skill for skill in infer_role_skills(resume) if skill not in resume_explicit]
+
+    matched = [skill for skill in job_skills if skill in resume_explicit]
+    gaps = [skill for skill in job_skills if skill not in resume_explicit]
+
+    score = round((len(matched) / max(len(job_skills), 1)) * 100) if job_skills else 0
+    question_skills = unique(gaps + matched)[:3] or ["Lógica de Programação", "Python", "SQL"]
+
+    return (
+        resume_explicit,
+        resume_inferred,
+        job_explicit,
+        job_inferred,
+        job_skills,
+        matched,
+        gaps,
+        score,
+        question_skills,
+    )
 
 
 def feedback(skill: str, answer: str):
@@ -114,22 +225,45 @@ with col1:
     resume = st.text_area(
         "01 — Seu currículo",
         height=260,
-        placeholder="Ex.: Estudante de Sistemas de Informação...\nPython, Git, SQL...\nProjeto de automação de relatórios...",
+        placeholder=(
+            "Ex.: João Silva\n"
+            "Desenvolvedor de Software Júnior\n\n"
+            "Habilidades: Python, Git, SQL e APIs REST.\n"
+            "Projeto de automação de relatórios com Python..."
+        ),
     )
 with col2:
     job = st.text_area(
         "02 — Vaga desejada",
         height=260,
-        placeholder="Ex.: Procuramos pessoa desenvolvedora júnior...\nRequisitos: Python, Git, SQL, APIs REST...",
+        placeholder=(
+            "Ex.: Desenvolvedor Python Júnior\n\n"
+            "Requisitos: Python, Git, SQL, APIs REST e lógica de programação.\n"
+            "Diferencial: Docker..."
+        ),
     )
 
 if st.button("Analisar meu perfil →", type="primary", use_container_width=True):
     if not resume.strip() or not job.strip():
         st.error("Preencha o currículo e o anúncio da vaga para executar o diagnóstico.")
     else:
-        resume_skills, job_skills, matched, gaps, score, question_skills = analyze(resume, job)
+        (
+            resume_explicit,
+            resume_inferred,
+            job_explicit,
+            job_inferred,
+            job_skills,
+            matched,
+            gaps,
+            score,
+            question_skills,
+        ) = analyze(resume, job)
+
         st.session_state.analysis = {
-            "resume_skills": resume_skills,
+            "resume_explicit": resume_explicit,
+            "resume_inferred": resume_inferred,
+            "job_explicit": job_explicit,
+            "job_inferred": job_inferred,
             "job_skills": job_skills,
             "matched": matched,
             "gaps": gaps,
@@ -156,15 +290,25 @@ if "analysis" in st.session_state:
     with a:
         st.markdown("**Competências encontradas**")
         if data["matched"]:
-            st.write(" • ".join(data["matched"]))
+            st.success(" • ".join(data["matched"]))
         else:
-            st.info("Nenhuma competência em comum identificada.")
+            st.info("Nenhuma competência técnica explícita em comum foi identificada.")
+        if data["resume_explicit"]:
+            st.caption("Detectadas no currículo: " + " • ".join(data["resume_explicit"]))
+        else:
+            st.warning("Seu currículo não apresenta competências técnicas identificáveis. Adicione uma seção de habilidades, cursos ou projetos.")
+        if data["resume_inferred"]:
+            st.caption("Contexto do cargo no currículo (não considerado como comprovação): " + " • ".join(data["resume_inferred"]))
+
     with b:
         st.markdown("**Habilidades citadas na vaga**")
-        if data["job_skills"]:
-            st.write(" • ".join(data["job_skills"]))
-        else:
-            st.info("Não foi possível detectar habilidades conhecidas na vaga.")
+        if data["job_explicit"]:
+            st.success(" • ".join(data["job_explicit"]))
+        if data["job_inferred"]:
+            st.info("Sugeridas pelo cargo: " + " • ".join(data["job_inferred"]))
+        if not data["job_explicit"] and not data["job_inferred"]:
+            st.warning("Não foi possível detectar habilidades técnicas. Cole os requisitos completos da vaga.")
+
     with c:
         st.markdown("**Lacunas**")
         if data["gaps"]:
@@ -190,13 +334,13 @@ if "analysis" in st.session_state:
             if not answer.strip():
                 st.warning("Digite uma resposta antes de solicitar o feedback.")
             else:
-                score, level, message = feedback(skill, answer)
-                st.session_state[f"feedback_{i}"] = (score, level, message)
+                score_feedback, level, message = feedback(skill, answer)
+                st.session_state[f"feedback_{i}"] = (score_feedback, level, message)
 
         if f"feedback_{i}" in st.session_state:
-            score, level, message = st.session_state[f"feedback_{i}"]
-            st.success(f"{score}/100 — {level}")
+            score_feedback, level, message = st.session_state[f"feedback_{i}"]
+            st.success(f"{score_feedback}/100 — {level}")
             st.write(message)
         st.divider()
 
-st.caption("MVP acadêmico • análise por palavras-chave • feedback heurístico • estrutura pronta para integração com IA generativa")
+st.caption("MVP acadêmico • análise por palavras-chave + inferência de contexto do cargo • feedback heurístico • estrutura pronta para integração com IA generativa")
