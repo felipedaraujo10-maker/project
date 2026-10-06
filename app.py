@@ -600,7 +600,7 @@ def main():
  
     with theme_col:
         st.markdown('<div style="font-size:.7rem;color:#667085;font-weight:800;margin:2px 0 -8px;">Tema</div>', unsafe_allow_html=True)
-        st.toggle("🌙 Modo escuro", key="dark_mode", help="Alterne entre os modos claro e escuro.")
+        st.toggle("🌙 Modo escuro", key="dark_mode", help="Alterne entre os modos claro e escuro."))
 
     st.markdown(
         '<div class="jm-hero"><div class="jm-eyebrow">Diagnóstico de currículo + simulador de entrevista</div><div class="jm-title">Descubra o que falta para seu perfil chegar mais perto da vaga.</div><div class="jm-subtitle">Compare seu currículo com a descrição de uma vaga, identifique competências e treine para perguntas técnicas com base no que o mercado está pedindo.</div><div class="jm-hero-meta"><span class="jm-hero-pill">✓ Comparação de habilidades</span><span class="jm-hero-pill">✓ Lacunas prioritárias</span><span class="jm-hero-pill">✓ 3 perguntas aleatórias</span><span class="jm-hero-pill">✓ Feedback imediato</span></div></div>',
